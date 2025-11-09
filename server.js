@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import fetch from 'node-fetch';
 import admin from 'firebase-admin';
+import nodemailer from 'nodemailer';
 
 dotenv.config();
 
@@ -72,6 +73,16 @@ app.get('/api/health', (req, res) => {
     ok: true,
     fcm: hasAdmin ? 'admin' : (process.env.FCM_SERVER_KEY ? 'legacy' : 'none')
   });
+});
+
+// Root route for convenience (avoid "Cannot GET /")
+app.get('/', (req, res) => {
+  res.type('text').send(
+    'Dashco Backend is running. \n' +
+    'Health: /api/health \n' +
+    'Contact: POST /api/contact \n' +
+    'Razorpay: GET /api/key, POST /api/orders, POST /api/verify \n'
+  );
 });
 
 // --- Razorpay Key Endpoint ---
@@ -332,6 +343,74 @@ app.post('/api/notify-cookie', async (req, res) => {
   } catch (err) {
     console.error('notify-cookie error:', err);
     res.status(500).json({ error: 'notify_failed', message: err.message });
+  }
+});
+
+// --- Contact Email (Nodemailer via Gmail) ---
+app.post('/api/contact', async (req, res) => {
+  try {
+    const {
+      name = '',
+      email = '',
+      phone = '',
+      service = '',
+      message = '',
+      source = ''
+    } = req.body || {};
+
+    const GMAIL_USER = process.env.GMAIL_USER;
+    const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS;
+    const TO_EMAIL = process.env.MAIL_TO || GMAIL_USER;
+
+    if (!GMAIL_USER || !GMAIL_PASS) {
+      return res.status(500).json({ error: 'mailer_not_configured' });
+    }
+
+    const transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: GMAIL_USER, pass: GMAIL_PASS }
+    });
+
+    const subject = `New contact: ${name || 'Unknown'} (${service || 'General'})`;
+    const text = [
+      `Name: ${name}`,
+      `Email: ${email}`,
+      `Phone: ${phone}`,
+      `Service: ${service}`,
+      `Source: ${source}`,
+      '',
+      `Message:`,
+      `${message || '(no message provided)'}`
+    ].join('\n');
+
+    const html = `
+      <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;">
+        <h2 style="margin:0 0 12px;">New contact submission</h2>
+        <table style="border-collapse:collapse;">
+          <tr><td><strong>Name</strong></td><td>${String(name || '')}</td></tr>
+          <tr><td><strong>Email</strong></td><td>${String(email || '')}</td></tr>
+          <tr><td><strong>Phone</strong></td><td>${String(phone || '')}</td></tr>
+          <tr><td><strong>Service</strong></td><td>${String(service || '')}</td></tr>
+          <tr><td><strong>Source</strong></td><td>${String(source || '')}</td></tr>
+        </table>
+        <p style="margin-top:12px; white-space:pre-wrap;">${String(message || '(no message provided)')}</p>
+      </div>
+    `;
+
+    const mail = {
+      from: `Website Contact <${GMAIL_USER}>`,
+      to: TO_EMAIL,
+      replyTo: email || undefined,
+      subject,
+      text,
+      html
+    };
+
+    const info = await transporter.sendMail(mail);
+    return res.json({ success: true, id: info.messageId });
+  } catch (err) {
+    console.error('contact email error:', err);
+    return res.status(500).json({ success: false, error: 'send_failed', message: err?.message || String(err) });
   }
 });
 
