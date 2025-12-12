@@ -358,18 +358,32 @@ app.post('/api/contact', async (req, res) => {
       source = ''
     } = req.body || {};
 
-    const GMAIL_USER = process.env.GMAIL_USER;
-    const GMAIL_PASS = process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS;
-    const TO_EMAIL = process.env.MAIL_TO || GMAIL_USER;
+    const MAIL_SERVICE = process.env.MAIL_SERVICE || 'gmail';
+    const MAIL_HOST = process.env.MAIL_HOST || '';
+    const MAIL_PORT = Number(process.env.MAIL_PORT || 0);
+    const MAIL_SECURE = String(process.env.MAIL_SECURE || '').toLowerCase() === 'true';
+    const MAIL_USER = process.env.MAIL_USER || process.env.GMAIL_USER || '';
+    const MAIL_PASS = process.env.MAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || '';
+    const TO_EMAIL = process.env.MAIL_TO || MAIL_USER;
 
-    if (!GMAIL_USER || !GMAIL_PASS) {
+    if (!MAIL_USER || !MAIL_PASS) {
       return res.status(500).json({ error: 'mailer_not_configured' });
     }
 
-    const transporter = nodemailer.createTransport({
-      service: 'gmail',
-      auth: { user: GMAIL_USER, pass: GMAIL_PASS }
-    });
+    let transporter;
+    if (MAIL_HOST && MAIL_PORT) {
+      transporter = nodemailer.createTransport({
+        host: MAIL_HOST,
+        port: MAIL_PORT,
+        secure: MAIL_SECURE,
+        auth: { user: MAIL_USER, pass: MAIL_PASS }
+      });
+    } else {
+      transporter = nodemailer.createTransport({
+        service: MAIL_SERVICE,
+        auth: { user: MAIL_USER, pass: MAIL_PASS }
+      });
+    }
 
     const subject = `New contact: ${name || 'Unknown'} (${service || 'General'})`;
     const text = [
@@ -398,7 +412,7 @@ app.post('/api/contact', async (req, res) => {
     `;
 
     const mail = {
-      from: `Website Contact <${GMAIL_USER}>`,
+      from: `Website Contact <${MAIL_USER}>`,
       to: TO_EMAIL,
       replyTo: email || undefined,
       subject,
