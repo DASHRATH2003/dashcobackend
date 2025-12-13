@@ -17,7 +17,7 @@ const FCM_DRIVER = String(process.env.FCM_DRIVER || 'auto').toLowerCase();
 // --- CORS Setup ---
 // app.use(cors({ origin: true, credentials: true }));
 app.use(cors({
-  origin: ["https://codeeng.in", "https://www.codeeng.in","http://localhost:3000"]
+  origin: ["https://codeeng.in", "https://www.codeeng.in","http://localhost:3000","http://localhost:5173"]
 }));
 
 
