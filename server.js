@@ -363,6 +363,7 @@ app.post('/api/contact', async (req, res) => {
     }
 
     let transporter;
+    let verified = false;
     if (MAIL_HOST && MAIL_PORT) {
       transporter = nodemailer.createTransport({
         host: MAIL_HOST,
@@ -370,11 +371,22 @@ app.post('/api/contact', async (req, res) => {
         secure: MAIL_SECURE,
         auth: { user: MAIL_USER, pass: MAIL_PASS }
       });
-    } else {
+      try {
+        await transporter.verify();
+        verified = true;
+      } catch {}
+    }
+    if (!verified) {
       transporter = nodemailer.createTransport({
         service: MAIL_SERVICE,
         auth: { user: MAIL_USER, pass: MAIL_PASS }
       });
+      try {
+        await transporter.verify();
+        verified = true;
+      } catch (e) {
+        console.error('mailer verify failed:', e?.message || e);
+      }
     }
 
     const subject = `New contact: ${name || 'Unknown'} (${service || 'General'})`;
@@ -415,8 +427,15 @@ app.post('/api/contact', async (req, res) => {
     const info = await transporter.sendMail(mail);
     return res.json({ success: true, id: info.messageId });
   } catch (err) {
-    console.error('contact email error:', err);
-    return res.status(500).json({ success: false, error: 'send_failed', message: err?.message || String(err) });
+    const detail = (err?.response && typeof err.response === 'string') ? err.response : '';
+    console.error('contact email error:', err?.message || err, detail || '');
+    return res.status(500).json({
+      success: false,
+      error: 'send_failed',
+      code: err?.code || '',
+      message: err?.message || String(err),
+      detail
+    });
   }
 });
 
