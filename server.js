@@ -347,28 +347,8 @@ app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, phone, service, message } = req.body;
 
-    const TO_EMAIL = process.env.MAIL_TO || process.env.MAIL_USER;
-
-    const transporter = nodemailer.createTransport({
-      host: "smtp.gmail.com",
-      port: 587,
-      secure: false,
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
-
-    await transporter.verify(); // 🔥 MUST
-
-    const info = await transporter.sendMail({
-      from: `Website Contact <${process.env.MAIL_USER}>`,
-      to: TO_EMAIL,
-      subject: `New Contact from ${name}`,
-      text: `
+    const subject = `New Contact from ${name}`;
+    const text = `
 Name: ${name}
 Email: ${email}
 Phone: ${phone}
@@ -376,22 +356,34 @@ Service: ${service}
 
 Message:
 ${message}
-      `,
-      replyTo: email,
+    `;
+
+    const r = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: process.env.RESEND_FROM,
+        to: process.env.RESEND_TO,
+        subject,
+        text,
+        reply_to: email,
+      }),
     });
 
-    return res.status(200).json({
-      success: true,
-      id: info.messageId,
-    });
+    const data = await r.json();
+
+    if (!r.ok) throw new Error(data?.message || "Resend failed");
+
+    return res.json({ success: true, provider: "resend" });
   } catch (err) {
-    console.error("CONTACT MAIL ERROR:", err);
-    return res.status(500).json({
-      success: false,
-      error: err.message,
-    });
+    console.error("CONTACT ERROR:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 
 
