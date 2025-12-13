@@ -347,10 +347,28 @@ app.post("/api/contact", async (req, res) => {
   try {
     const { name, email, phone, service, message } = req.body;
 
-    // Prefer Resend HTTP API if available, fallback to Nodemailer SMTP
     const TO_EMAIL = process.env.MAIL_TO || process.env.MAIL_USER;
-    const subject = `New Contact from ${name}`;
-    const text = `
+
+    const transporter = nodemailer.createTransport({
+      host: "smtp.gmail.com",
+      port: 587,
+      secure: false,
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS,
+      },
+      tls: {
+        rejectUnauthorized: false,
+      },
+    });
+
+    await transporter.verify(); // 🔥 MUST
+
+    const info = await transporter.sendMail({
+      from: `Website Contact <${process.env.MAIL_USER}>`,
+      to: TO_EMAIL,
+      subject: `New Contact from ${name}`,
+      text: `
 Name: ${name}
 Email: ${email}
 Phone: ${phone}
@@ -358,53 +376,23 @@ Service: ${service}
 
 Message:
 ${message}
-      `;
-    const html = `<pre>${text}</pre>`;
-
-    if (process.env.RESEND_API_KEY) {
-      const r = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from: process.env.RESEND_FROM || process.env.MAIL_USER,
-          to: process.env.RESEND_TO || TO_EMAIL,
-          subject,
-          html,
-          text,
-          reply_to: email || undefined
-        })
-      });
-      const resp = await r.json().catch(() => ({}));
-      if (!r.ok || !resp?.id) {
-        throw new Error(resp?.error?.message || 'resend_failed');
-      }
-      return res.status(200).json({ success: true, id: resp.id, provider: 'resend' });
-    }
-
-    const transporter = nodemailer.createTransport({
-      service: "gmail",
-      auth: {
-        user: process.env.MAIL_USER,
-        pass: process.env.MAIL_PASS, // Gmail App Password
-      },
+      `,
+      replyTo: email,
     });
 
-    const info = await transporter.sendMail({
-      from: process.env.MAIL_USER,
-      to: TO_EMAIL,
-      subject,
-      text,
+    return res.status(200).json({
+      success: true,
+      id: info.messageId,
     });
-
-    return res.status(200).json({ success: true, id: info.messageId, provider: 'smtp' });
   } catch (err) {
     console.error("CONTACT MAIL ERROR:", err);
-    return res.status(500).json({ success: false, error: err.message });
+    return res.status(500).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
+
 
 
 app.get('/api/mail-verify', async (req, res) => {
