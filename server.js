@@ -15,7 +15,11 @@ const PORT = Number(process.env.PORT) || 5000;
 const FCM_DRIVER = String(process.env.FCM_DRIVER || 'auto').toLowerCase();
 
 // --- CORS Setup ---
-app.use(cors({ origin: true, credentials: true }));
+// app.use(cors({ origin: true, credentials: true }));
+app.use(cors({
+  origin: ["https://codeeng.in", "https://www.codeeng.in"]
+}));
+
 
 app.use(express.json());
 
@@ -339,123 +343,40 @@ app.post('/api/notify-cookie', async (req, res) => {
 });
 
 // --- Contact Email (Nodemailer via Gmail) ---
-app.post('/api/contact', async (req, res) => {
+app.post("/api/contact", async (req, res) => {
   try {
-    const {
-      name = '',
-      email = '',
-      phone = '',
-      service = '',
-      message = '',
-      source = ''
-    } = req.body || {};
+    const { name, email, phone, service, message } = req.body;
 
-    const MAIL_SERVICE = process.env.MAIL_SERVICE || 'gmail';
-    const MAIL_HOST = process.env.MAIL_HOST || '';
-    const MAIL_PORT = Number(process.env.MAIL_PORT || 0);
-    const MAIL_SECURE = String(process.env.MAIL_SECURE || '').toLowerCase() === 'true';
-    const MAIL_USER = process.env.MAIL_USER || process.env.GMAIL_USER || '';
-    const MAIL_PASS = process.env.MAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || '';
-    const TO_EMAIL = process.env.MAIL_TO || MAIL_USER;
-
-    if (!MAIL_USER || !MAIL_PASS) {
-      return res.status(500).json({ error: 'mailer_not_configured' });
-    }
-
-    let transporter;
-    let verified = false;
-    if (MAIL_HOST && MAIL_PORT) {
-      transporter = nodemailer.createTransport({
-        host: MAIL_HOST,
-        port: MAIL_PORT,
-        secure: MAIL_SECURE,
-        auth: { user: MAIL_USER, pass: MAIL_PASS },
-        pool: true,
-        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 12000),
-        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 12000),
-        logger: true,
-        debug: true
-      });
-      try {
-        await transporter.verify();
-        verified = true;
-      } catch {}
-    }
-    if (!verified) {
-      transporter = nodemailer.createTransport({
-        service: MAIL_SERVICE,
-        auth: { user: MAIL_USER, pass: MAIL_PASS },
-        pool: true,
-        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 12000),
-        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 12000),
-        logger: true,
-        debug: true
-      });
-      try {
-        await transporter.verify();
-        verified = true;
-      } catch (e) {
-        console.error('mailer verify failed:', e?.message || e);
-      }
-    }
-
-    const subject = `New contact: ${name || 'Unknown'} (${service || 'General'})`;
-    const text = [
-      `Name: ${name}`,
-      `Email: ${email}`,
-      `Phone: ${phone}`,
-      `Service: ${service}`,
-      `Source: ${source}`,
-      '',
-      `Message:`,
-      `${message || '(no message provided)'}`
-    ].join('\n');
-
-    const html = `
-      <div style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;">
-        <h2 style="margin:0 0 12px;">New contact submission</h2>
-        <table style="border-collapse:collapse;">
-          <tr><td><strong>Name</strong></td><td>${String(name || '')}</td></tr>
-          <tr><td><strong>Email</strong></td><td>${String(email || '')}</td></tr>
-          <tr><td><strong>Phone</strong></td><td>${String(phone || '')}</td></tr>
-          <tr><td><strong>Service</strong></td><td>${String(service || '')}</td></tr>
-          <tr><td><strong>Source</strong></td><td>${String(source || '')}</td></tr>
-        </table>
-        <p style="margin-top:12px; white-space:pre-wrap;">${String(message || '(no message provided)')}</p>
-      </div>
-    `;
-
-    const mail = {
-      from: `Website Contact <${MAIL_USER}>`,
-      to: TO_EMAIL,
-      replyTo: email || undefined,
-      subject,
-      text,
-      html
-    };
-
-    const info = await transporter.sendMail(mail);
-    console.log('contact email sent:', {
-      messageId: info?.messageId,
-      accepted: info?.accepted,
-      rejected: info?.rejected,
-      response: info?.response,
-      envelopeTime: info?.envelopeTime,
-      messageTime: info?.messageTime,
+    const transporter = nodemailer.createTransport({
+      service: "gmail",
+      auth: {
+        user: process.env.MAIL_USER,
+        pass: process.env.MAIL_PASS, // Gmail App Password
+      },
     });
-    return res.json({ success: true, id: info.messageId, accepted: info.accepted, rejected: info.rejected });
+
+    await transporter.sendMail({
+      from: process.env.MAIL_USER,
+      to: process.env.MAIL_TO || process.env.MAIL_USER,
+      subject: `New Contact from ${name}`,
+      text: `
+Name: ${name}
+Email: ${email}
+Phone: ${phone}
+Service: ${service}
+
+Message:
+${message}
+      `,
+    });
+
+    return res.status(200).json({ success: true });
   } catch (err) {
-    const detail = (err?.response && typeof err.response === 'string') ? err.response : '';
-    console.error('contact email error:', err?.message || err, detail || '');
-    return res.status(500).json({
-      success: false,
-      error: 'send_failed',
-      code: err?.code || '',
-      message: err?.message || String(err),
-      detail
-    });
+    console.error("CONTACT MAIL ERROR:", err);
+    return res.status(500).json({ success: false, error: err.message });
   }
 });
+
 
 app.get('/api/mail-verify', async (req, res) => {
   try {
