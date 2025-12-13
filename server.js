@@ -457,6 +457,42 @@ app.post('/api/contact', async (req, res) => {
   }
 });
 
+app.get('/api/mail-verify', async (req, res) => {
+  try {
+    const MAIL_SERVICE = process.env.MAIL_SERVICE || 'gmail';
+    const MAIL_HOST = process.env.MAIL_HOST || '';
+    const MAIL_PORT = Number(process.env.MAIL_PORT || 0);
+    const MAIL_SECURE = String(process.env.MAIL_SECURE || '').toLowerCase() === 'true';
+    const MAIL_USER = process.env.MAIL_USER || process.env.GMAIL_USER || '';
+    const MAIL_PASS = process.env.MAIL_PASS || process.env.GMAIL_APP_PASSWORD || process.env.GMAIL_PASS || '';
+
+    if (!MAIL_USER || !MAIL_PASS) return res.status(500).json({ ok: false, error: 'mailer_not_configured' });
+
+    let transporter;
+    let verified = false;
+    if (MAIL_HOST && MAIL_PORT) {
+      transporter = nodemailer.createTransport({
+        host: MAIL_HOST,
+        port: MAIL_PORT,
+        secure: MAIL_SECURE,
+        auth: { user: MAIL_USER, pass: MAIL_PASS }
+      });
+      try { await transporter.verify(); verified = true; } catch {}
+    }
+    if (!verified) {
+      transporter = nodemailer.createTransport({
+        service: MAIL_SERVICE,
+        auth: { user: MAIL_USER, pass: MAIL_PASS }
+      });
+      await transporter.verify();
+    }
+
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, code: err?.code || '', message: err?.message || String(err) });
+  }
+});
+
 // --- Start Server ---
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`);
