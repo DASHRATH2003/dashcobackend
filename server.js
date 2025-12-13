@@ -371,8 +371,10 @@ app.post('/api/contact', async (req, res) => {
         secure: MAIL_SECURE,
         auth: { user: MAIL_USER, pass: MAIL_PASS },
         pool: true,
-        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 10000),
-        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 10000)
+        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 12000),
+        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 12000),
+        logger: true,
+        debug: true
       });
       try {
         await transporter.verify();
@@ -384,8 +386,10 @@ app.post('/api/contact', async (req, res) => {
         service: MAIL_SERVICE,
         auth: { user: MAIL_USER, pass: MAIL_PASS },
         pool: true,
-        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 10000),
-        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 10000)
+        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 12000),
+        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 12000),
+        logger: true,
+        debug: true
       });
       try {
         await transporter.verify();
@@ -430,17 +434,16 @@ app.post('/api/contact', async (req, res) => {
       html
     };
 
-    const sendPromise = transporter.sendMail(mail);
-    const timeoutMs = Number(process.env.MAIL_TIMEOUT_MS || 8000);
-    const timeoutResult = await Promise.race([
-      sendPromise,
-      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), timeoutMs)),
-    ]);
-    if (timeoutResult && timeoutResult.timeout) {
-      console.warn('contact email send timed out');
-      return res.status(202).json({ success: false, error: 'send_timeout' });
-    }
-    return res.json({ success: true, id: timeoutResult.messageId });
+    const info = await transporter.sendMail(mail);
+    console.log('contact email sent:', {
+      messageId: info?.messageId,
+      accepted: info?.accepted,
+      rejected: info?.rejected,
+      response: info?.response,
+      envelopeTime: info?.envelopeTime,
+      messageTime: info?.messageTime,
+    });
+    return res.json({ success: true, id: info.messageId, accepted: info.accepted, rejected: info.rejected });
   } catch (err) {
     const detail = (err?.response && typeof err.response === 'string') ? err.response : '';
     console.error('contact email error:', err?.message || err, detail || '');
