@@ -369,7 +369,10 @@ app.post('/api/contact', async (req, res) => {
         host: MAIL_HOST,
         port: MAIL_PORT,
         secure: MAIL_SECURE,
-        auth: { user: MAIL_USER, pass: MAIL_PASS }
+        auth: { user: MAIL_USER, pass: MAIL_PASS },
+        pool: true,
+        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 10000),
+        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 10000)
       });
       try {
         await transporter.verify();
@@ -379,7 +382,10 @@ app.post('/api/contact', async (req, res) => {
     if (!verified) {
       transporter = nodemailer.createTransport({
         service: MAIL_SERVICE,
-        auth: { user: MAIL_USER, pass: MAIL_PASS }
+        auth: { user: MAIL_USER, pass: MAIL_PASS },
+        pool: true,
+        connectionTimeout: Number(process.env.MAIL_CONN_TIMEOUT_MS || 10000),
+        socketTimeout: Number(process.env.MAIL_SOCKET_TIMEOUT_MS || 10000)
       });
       try {
         await transporter.verify();
@@ -424,8 +430,17 @@ app.post('/api/contact', async (req, res) => {
       html
     };
 
-    const info = await transporter.sendMail(mail);
-    return res.json({ success: true, id: info.messageId });
+    const sendPromise = transporter.sendMail(mail);
+    const timeoutMs = Number(process.env.MAIL_TIMEOUT_MS || 8000);
+    const timeoutResult = await Promise.race([
+      sendPromise,
+      new Promise(resolve => setTimeout(() => resolve({ timeout: true }), timeoutMs)),
+    ]);
+    if (timeoutResult && timeoutResult.timeout) {
+      console.warn('contact email send timed out');
+      return res.status(202).json({ success: false, error: 'send_timeout' });
+    }
+    return res.json({ success: true, id: timeoutResult.messageId });
   } catch (err) {
     const detail = (err?.response && typeof err.response === 'string') ? err.response : '';
     console.error('contact email error:', err?.message || err, detail || '');
